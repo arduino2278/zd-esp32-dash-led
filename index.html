@@ -83,7 +83,7 @@ body {
       <div class="card text-center p-4">
         <div id="led0" class="led red"></div>
         <h5>LED Rouge</h5>
-        <button class="btn btn-danger btn-toggle" onclick="toggleLed(0,'led0')">OFF</button>
+        <button class="btn btn-danger btn-toggle" onclick="toggleLed(0)">OFF</button>
       </div>
     </div>
 
@@ -92,7 +92,7 @@ body {
       <div class="card text-center p-4">
         <div id="led1" class="led yellow"></div>
         <h5>LED Jaune</h5>
-        <button class="btn btn-warning btn-toggle" onclick="toggleLed(1,'led1')">OFF</button>
+        <button class="btn btn-warning btn-toggle" onclick="toggleLed(1)">OFF</button>
       </div>
     </div>
 
@@ -101,7 +101,7 @@ body {
       <div class="card text-center p-4">
         <div id="led2" class="led green"></div>
         <h5>LED Verte</h5>
-        <button class="btn btn-success btn-toggle" onclick="toggleLed(2,'led2')">OFF</button>
+        <button class="btn btn-success btn-toggle" onclick="toggleLed(2)">OFF</button>
       </div>
     </div>
 
@@ -112,16 +112,48 @@ body {
 const BLYNK_TOKEN = "K5zBN_DdyUZgc7Jxhb6ac1yKsLyKAjZc";
 let states = [0,0,0]; // 0 = OFF, 1 = ON
 
-// Fonction pour envoyer commande à Blynk
-function sendToBlynk(pin, value) {
-  fetch(`https://blynk.cloud/external/api/update?token=${BLYNK_TOKEN}&V${pin}=${value}`);
+// ⚡ Mapping Blynk → dashboard
+// dashboard: [rouge, jaune, verte]
+// Blynk: [V0=rouge, V1=verte, V2=jaune]
+const blynkToDashboard = [0, 2, 1]; // index du dashboard pour chaque pin Blynk
+
+// -------- Fonctions Blynk --------
+
+// Envoyer état depuis dashboard vers Blynk
+function sendToBlynk(dashboardPin, value) {
+  const blynkPin = blynkToDashboard.indexOf(dashboardPin); // inverse mapping
+  fetch(`https://blynk.cloud/external/api/update?token=${BLYNK_TOKEN}&V${blynkPin}=${value}`);
 }
 
-// Fonction pour actualiser le dashboard
+// Récupérer état depuis Blynk pour mettre à jour dashboard
+function fetchBlynkState(pin) {
+  fetch(`https://blynk.cloud/external/api/get?token=${BLYNK_TOKEN}&V${pin}`)
+    .then(response => response.json())
+    .then(data => {
+      const dashboardPin = blynkToDashboard[pin];
+      const value = parseInt(data);
+      if (states[dashboardPin] !== value) {
+        updateDashboard(dashboardPin, value);
+      }
+    })
+    .catch(err => console.error("Erreur fetch Blynk:", err));
+}
+
+// Mettre à jour tout le dashboard en temps réel
+function startRealtimeUpdate() {
+  setInterval(() => {
+    for (let pin = 0; pin < blynkToDashboard.length; pin++) {
+      fetchBlynkState(pin);
+    }
+  }, 1000); // toutes les 1 seconde
+}
+
+// -------- Fonctions dashboard --------
+
+// Actualiser visuellement dashboard
 function updateDashboard(pin, value) {
   states[pin] = value;
-  const ledId = "led" + pin;
-  const led = document.getElementById(ledId);
+  const led = document.getElementById("led" + pin);
   const btn = led.parentElement.querySelector("button");
   if (value) {
     led.classList.add("on");
@@ -133,13 +165,13 @@ function updateDashboard(pin, value) {
 }
 
 // Toggle LED depuis le dashboard
-function toggleLed(pin, ledId) {
+function toggleLed(pin) {
   const newState = states[pin] ? 0 : 1;
   sendToBlynk(pin, newState);
   updateDashboard(pin, newState);
 }
 
-// Traitement des commandes vocales
+// -------- Commandes vocales --------
 function processCommand(text) {
   text = text.toLowerCase();
   if (text.includes("rouge")) {
@@ -159,7 +191,6 @@ function processCommand(text) {
   }
 }
 
-// Commande vocale
 function startRecognition() {
   const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
   recognition.lang = "fr-FR";
@@ -171,33 +202,8 @@ function startRecognition() {
   recognition.start();
 }
 
-// -------- Temps réel Blynk --------
-
-// Récupérer l'état d'une LED depuis Blynk
-function fetchBlynkState(pin) {
-  fetch(`https://blynk.cloud/external/api/get?token=${BLYNK_TOKEN}&V${pin}`)
-    .then(response => response.json())
-    .then(data => {
-      const value = parseInt(data);
-      if (states[pin] !== value) { // si différent, on met à jour
-        updateDashboard(pin, value);
-      }
-    })
-    .catch(err => console.error("Erreur fetch Blynk:", err));
-}
-
-// Mettre à jour toutes les LEDs en temps réel
-function startRealtimeUpdate() {
-  setInterval(() => {
-    for (let pin = 0; pin < states.length; pin++) {
-      fetchBlynkState(pin);
-    }
-  }, 1000); // toutes les 1 seconde
-}
-
-// Démarrage
+// -------- Démarrage --------
 startRealtimeUpdate();
-
 </script>
 
 </body>
